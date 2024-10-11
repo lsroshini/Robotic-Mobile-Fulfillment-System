@@ -1,4 +1,3 @@
-acopy==0.7.0
 altair==5.4.1
 deap==1.4.1
 gymnasium==1.0.0
