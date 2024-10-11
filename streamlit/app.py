@@ -1,130 +1,174 @@
+import os
 import numpy as np
-import streamlit as st
+import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.monitor import Monitor
-from gymnasium import Env
-from gymnasium.spaces import Discrete, Box
-from typing import List, Dict, Tuple, Any
+import networkx as nx
+import streamlit as st
 
-# Custom Warehouse Environment
-class WarehouseEnv(Env):
-    def __init__(self):
-        super().__init__()
-        self.action_space = Discrete(5)  # Example action space size
-        self.observation_space = Box(low=0, high=1, shape=(5,), dtype=np.float32)  # Example observation space
-        self.distances: np.ndarray = np.random.rand(5, 5)  # Replace with your actual distances
-        self.pheromone: np.ndarray = np.ones((5, 5))  # Initial pheromone levels
-        self.state: np.ndarray = self.reset()[0]  # Call reset and get the initial state
+# Load datasets
+basedir = os.path.abspath(os.path.dirname(__file__))
+orders_df = pd.read_csv(os.path.join(basedir, 'orders.csv'))
+shelves_df = pd.read_csv(os.path.join(basedir, 'shelves.csv'))
+robots_df = pd.read_csv(os.path.join(basedir, 'robots.csv'))
 
-    def reset(self, seed: int = None) -> Tuple[np.ndarray, Dict[str, Any]]:
-        if seed is not None:
-            np.random.seed(seed)  # Set the random seed for reproducibility
-        self.state = np.zeros(5)  # Reset state
-        return self.state, {}  # Return state and empty info dictionary
+# 1. Create a NumPy array for shelf locations
+shelves_locations = shelves_df[['Location_X', 'Location_Y']].to_numpy()
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        # Implement the logic for taking a step in the environment
-        self.state = np.random.rand(5)  # Example state update; replace with your logic
-        reward = np.random.rand()  # Replace with actual reward calculation
-        terminated = False  # Set to True if the episode is done
-        truncated = False  # Set to True if the episode was truncated due to time limits
-        info = {}
-        return self.state, reward, terminated, truncated, info
+# 2. Define the Distance Matrix Function
+def shelf_distance(s1, s2):
+    if not (0 <= s1 < len(shelves_locations)) or not (0 <= s2 < len(shelves_locations)):
+        raise IndexError(f"Invalid index: s1={s1}, s2={s2} for shelves_locations with size {len(shelves_locations)}")
+    return np.linalg.norm(shelves_locations[s1] - shelves_locations[s2])
 
-# Ant Colony Optimization (ACO) Implementation
-class ACO:
-    def __init__(self, env: WarehouseEnv):
-        self.env = env
-        self.n_best = 3  # Number of best paths to consider
-        self.best_paths = []  # Store best paths for visualization
+# Create a distance matrix
+num_shelves = len(shelves_locations)
+distance_matrix = np.zeros((num_shelves, num_shelves))
 
-    def run(self) -> List[int]:
-        all_paths = [[0, 1, 2]]  # Example paths; replace with your actual path generation logic
-        self.spread_pheromone(all_paths, self.n_best)
-        self.best_paths = all_paths[:self.n_best]  # Store the best paths for visualization
-        return all_paths[0]  # Return the best path for demonstration
+for i in range(num_shelves):
+    for j in range(num_shelves):
+        distance_matrix[i][j] = shelf_distance(i, j)
 
-    def spread_pheromone(self, all_paths: List[List[int]], n_best: int) -> None:
-        for path in all_paths[:n_best]:
+# 3. Ant Colony Optimization Class
+class AntColony:
+    def __init__(self, distance_matrix, n_ants, n_best, n_iterations, decay, alpha=1, beta=1):
+        self.distances = distance_matrix
+        self.pheromone = np.ones(self.distances.shape) / len(distance_matrix)
+        self.all_inds = range(len(distance_matrix))
+        self.n_ants = n_ants
+        self.n_best = n_best
+        self.n_iterations = n_iterations
+        self.decay = decay
+        self.alpha = alpha
+        self.beta = beta
+
+    def run(self):
+        all_time_shortest_path = ("placeholder", np.inf)
+        for _ in range(self.n_iterations):
+            all_paths = self.gen_all_paths()
+            self.spread_pheromone(all_paths, self.n_best)
+            shortest_path = min(all_paths, key=lambda x: x[1])  # x[1] is the distance
+            if shortest_path[1] < all_time_shortest_path[1]:
+                all_time_shortest_path = shortest_path
+            self.pheromone *= self.decay  # Apply decay
+
+        return all_time_shortest_path
+
+    def spread_pheromone(self, all_paths, n_best):
+        sorted_paths = sorted(all_paths, key=lambda x: x[1])  # Sort based on distance
+        for path, dist in sorted_paths[:n_best]:  # Take n_best paths
             for move in path:
-                if self.env.distances[move].any():  # Check if distances[move] is non-zero
-                    self.env.pheromone[move] += 1.0 / self.env.distances[move].sum()  # Spread pheromone
+                self.pheromone[move] += 1.0 / self.distances[move]
 
-# Main Streamlit App
-def main() -> None:
-    st.title("Robotic Mobile Fulfillment System")
-    st.sidebar.header("Control Panel")
+    def gen_path_dist(self, path):
+        total_dist = 0
+        for i in range(len(path) - 1):
+            total_dist += self.distances[path[i]][path[i + 1]]  # Compute distance from current to next
+        return total_dist
 
-    # Create environment and ACO instances
-    env = WarehouseEnv()
-    wrapped_env = Monitor(env)
-    vec_env = DummyVecEnv([lambda: wrapped_env])
-    
-    # Initialize the model
-    model = PPO("MlpPolicy", vec_env, verbose=1)
+    def gen_all_paths(self):
+        all_paths = []
+        for _ in range(self.n_ants):
+            path = self.gen_path(0)  # Start at shelf 0
+            path_distance = self.gen_path_dist(path)
+            all_paths.append((path, path_distance))  # Append path and its distance
+        return all_paths
 
-    # ACO Run Button
-    if st.sidebar.button("Run ACO"):
-        aco_instance = ACO(env)  # Create ACO instance
-        best_route = aco_instance.run()  # Run ACO to find best route
-        st.write("Best route found:", best_route)
-        
-        # Visualize best paths if available
-        if aco_instance.best_paths:
-            visualize_paths(aco_instance.best_paths)
-        else:
-            st.write("No paths found for visualization.")
+    def gen_path(self, start):
+        path = []
+        visited = set()
+        visited.add(start)
+        prev = start
+        for _ in range(len(self.distances) - 1):
+            move = self.pick_move(self.pheromone[prev], self.distances[prev], visited)
+            path.append(move)
+            prev = move
+            visited.add(move)
+        path.append(start)  # Returning to start
+        return path
 
-    # Learning Loop
-    if st.sidebar.button("Train Model"):
-        training_rewards = []  # List to store rewards during training
-        timesteps = 10000  # Number of training timesteps
+    def pick_move(self, pheromone, dist, visited):
+        pheromone = np.copy(pheromone)
+        pheromone[list(visited)] = 0  # Block visited nodes
+        dist = np.where(dist == 0, np.inf, dist)
+        row = pheromone * self.alpha * ((1.0 / dist) * self.beta)
 
-        # Custom callback to capture rewards during training
-        class RewardCallback:
-            def __init__(self):
-                self.rewards = []
+        if np.sum(row) == 0:
+            return np.random.choice(list(set(self.all_inds) - visited))
 
-            def __call__(self, locals_, globals_):
-                self.rewards.append(locals_['self'].rollout_buffer.rewards[-1])  # Capture last reward
+        norm_row = row / row.sum()
+        move = np.random.choice(list(self.all_inds), p=norm_row)
+        return move
 
-        reward_callback = RewardCallback()
+# 4. Run the Ant Colony Optimization to get the best shelf route
+aco = AntColony(distance_matrix, n_ants=5, n_best=2, n_iterations=100, decay=0.95)
+best_shelf_route = aco.run()
 
-        model.learn(total_timesteps=timesteps, callback=reward_callback)
-        st.success("Model trained successfully!")
+# 5. Plotting functions using networkx
+def plot_path_with_shelves(shelves_to_pick, robot_id, order_id):
+    G = nx.Graph()
 
-        # Display training results
-        if reward_callback.rewards:
-            st.subheader("Training Rewards")
-            st.line_chart(reward_callback.rewards)
+    # Add nodes for each shelf location
+    for i, (x, y) in enumerate(shelves_locations):
+        G.add_node(i, pos=(x, y))
 
-def visualize_paths(paths: List[List[int]]) -> None:
-    st.subheader("Best Paths Visualization")
-    
-    if not paths:  # Check if there are paths to visualize
-        st.write("No paths to visualize.")
-        return
+    # Add edges for the path the robot travels
+    for i in range(len(shelves_to_pick) - 1):
+        G.add_edge(shelves_to_pick[i], shelves_to_pick[i + 1], weight=shelf_distance(shelves_to_pick[i], shelves_to_pick[i + 1]))
 
-    # Create a DataFrame for better handling
-    import pandas as pd
+    pos = nx.get_node_attributes(G, 'pos')
 
-    # Ensure paths are consistent and padded for heatmap
-    max_length = max(len(path) for path in paths)
-    padded_paths = [path + [None] * (max_length - len(path)) for path in paths]
+    # Plotting the graph
+    plt.figure(figsize=(8, 6))
 
-    # Convert to DataFrame for seaborn compatibility
-    path_df = pd.DataFrame(padded_paths)
-    
-    # Create a heatmap of pheromone levels
-    plt.figure(figsize=(10, 6))
-    sns.heatmap(path_df, annot=True, cmap='YlGnBu', cbar_kws={'label': 'Pheromone Level'})
-    plt.title("Best Paths")
-    plt.xlabel("Path Index")
-    plt.ylabel("Moves")
+    # Draw the shelves
+    nx.draw_networkx_nodes(G, pos, node_color='blue', node_size=300, label="Shelves")
+
+    # Draw the path traveled by the robot
+    edges = [(shelves_to_pick[i], shelves_to_pick[i + 1]) for i in range(len(shelves_to_pick) - 1)]
+    nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color='red', width=2)
+
+    # Draw the labels (shelf IDs)
+    nx.draw_networkx_labels(G, pos)
+
+    # Title and labels
+    plt.title(f'Robot {robot_id + 1} Path for Order {order_id}')
+    plt.xlabel('Location X')
+    plt.ylabel('Location Y')
+    plt.grid(True)
     st.pyplot(plt)
 
+# 6. Display metrics and graphs in Streamlit
+def display_metrics_and_graphs():
+    st.title("Robotic Path Visualization and Metrics")
+
+    # Select a specific robot and orders to visualize
+    selected_robot_id = st.selectbox("Select Robot ID", robots_df['Robot_ID'].unique())
+    selected_orders = st.multiselect("Select Orders", orders_df['Order_ID'].unique())
+
+    if selected_orders:
+        for order_id in selected_orders:
+            order = orders_df[orders_df['Order_ID'] == order_id].iloc[0]
+
+            # For visualization, assume each order corresponds to a set of shelves
+            shelves_to_pick = np.random.choice(range(len(shelves_df)), size=min(order['Number_of_Items'], len(shelves_df)), replace=False)
+
+            # Plot path with shelves
+            plot_path_with_shelves(shelves_to_pick, selected_robot_id, order_id)
+
+    # Plot bar chart for task completion times
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(best_shelf_route[0]) - 1))
+
+    plt.figure(figsize=(8, 6))
+    plt.bar(range(len(best_shelf_route[0]) - 1),
+            [shelf_distance(best_shelf_route[0][i], best_shelf_route[0][i + 1]) for i in range(len(best_shelf_route[0]) - 1)],
+            color=colors)
+
+    plt.title('Task Completion Times (Robot Scheduling)')
+    plt.xlabel('Task Index')
+    plt.ylabel('Distance')
+    plt.grid(True)
+    st.pyplot(plt)
+
+# Run the Streamlit app
 if __name__ == "__main__":
-    main()
+    display_metrics_and_graphs()
