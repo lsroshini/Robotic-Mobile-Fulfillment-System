@@ -1,0 +1,7 @@
+Robot_ID,Robot_Type,Battery_Level
+1,Picker,80
+2,Loader,90
+3,Sorter,85
+4,Picker,70
+5,Loader,95
+6,Sorter,60
