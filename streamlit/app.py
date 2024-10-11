@@ -56,8 +56,13 @@ class AntColony:
     def spread_pheromone(self, all_paths, n_best):
         sorted_paths = sorted(all_paths, key=lambda x: x[1])  # Sort based on distance
         for path, dist in sorted_paths[:n_best]:  # Take n_best paths
-            for move in path:
-                self.pheromone[move] += 1.0 / self.distances[move]
+            for i in range(len(path) - 1):  # Loop through the path
+                move_from = path[i]
+                move_to = path[i + 1]
+                if self.distances[move_from][move_to] > 0:  # Ensure we don't divide by zero
+                    self.pheromone[move_from][move_to] += 1.0 / self.distances[move_from][move_to]
+                else:
+                    pass
 
     def gen_path_dist(self, path):
         total_dist = 0
@@ -89,15 +94,17 @@ class AntColony:
     def pick_move(self, pheromone, dist, visited):
         pheromone = np.copy(pheromone)
         pheromone[list(visited)] = 0  # Block visited nodes
-        dist = np.where(dist == 0, np.inf, dist)
+        dist = np.where(dist == 0, np.inf, dist)  # Avoid dividing by zero
+        
         row = pheromone * self.alpha * ((1.0 / dist) * self.beta)
-
+        
         if np.sum(row) == 0:
-            return np.random.choice(list(set(self.all_inds) - visited))
+            return np.random.choice(list(set(self.all_inds) - visited))  # Randomly pick unvisited node
 
         norm_row = row / row.sum()
         move = np.random.choice(list(self.all_inds), p=norm_row)
         return move
+
 
 # 4. Run the Ant Colony Optimization to get the best shelf route
 aco = AntColony(distance_matrix, n_ants=5, n_best=2, n_iterations=100, decay=0.95)
