@@ -191,7 +191,7 @@ These are a few of the notebooks from Google's online Machine Learning course. S
 - [Video Interpolation](https://tensorflow.org/hub/tutorials/tweening_conv3d): Predict what happened in a video between the first and the last frame.
 """
 
-!pip install deap stable-baselines3[extra] gym
+# !pip install deap stable-baselines3[extra] gym
 
 import numpy as np
 import pandas as pd
