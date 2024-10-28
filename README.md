@@ -5,6 +5,9 @@ The Robotic Mobile Fulfillment System (RMFS), which utilizes autonomous mobile r
 
 You can access the live application [here](https://rmfs-dpd.streamlit.app/).
 
+## Architecture
+![Architecture Diagram](Architecture.jpg)
+
 ## Setup Instructions
 
 To set up and run this project locally, follow these steps:
