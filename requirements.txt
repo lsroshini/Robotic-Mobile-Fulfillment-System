@@ -10,7 +10,7 @@ colorama==0.4.6
 contourpy==1.3.0
 cycler==0.12.1
 Cython==0.29.37
-deap==1.4.1
+deap==1.4.2
 decorator==4.4.2
 etils==1.10.0
 Farama-Notifications==0.0.4
