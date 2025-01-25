@@ -34,7 +34,7 @@ Jinja2==3.1.4
 kiwisolver==1.4.7
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
-matplotlib==3.9.2
+matplotlib==3.10.0
 mdurl==0.1.2
 ml_dtypes==0.5.0
 moviepy==1.0.3
