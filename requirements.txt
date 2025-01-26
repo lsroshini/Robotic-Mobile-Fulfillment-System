@@ -66,7 +66,7 @@ requests==2.32.3
 rich==13.9.3
 scipy==1.14.1
 setuptools==75.2.0
-Shimmy==2.0.0
+Shimmy
 six==1.16.0
 stable_baselines3==2.3.2
 swig==4.2.1.post0
