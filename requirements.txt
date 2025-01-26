@@ -22,7 +22,7 @@ fsspec==2024.10.0
 glfw==2.7.0
 gym==0.26.2
 gym-notices==0.0.8
-gymnasium==0.29.1
+gymnasium
 humanize==4.11.0
 idna==3.10
 imageio==2.36.0
