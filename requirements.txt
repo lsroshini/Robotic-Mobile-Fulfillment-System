@@ -1,6 +1,5 @@
 absl-py
 ale-py
-box2d-py
 certifi
 cffi
 charset-normalizer
